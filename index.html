@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MotoSquad Nepal - Group Ride HUD</title>
+
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- MQTT Web Client for zero-backend real-time syncing -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #map { width: 100%; height: 100vh; z-index: 1; }
+
+    /* Top Ride Info Bar */
+    .top-bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      background: rgba(18, 18, 18, 0.92);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      padding: 12px 16px;
+      border-radius: 14px;
+      z-index: 1000;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .top-bar h2 { font-size: 15px; font-weight: 700; color: #00e676; }
+    .top-bar span { font-size: 13px; color: #bbb; }
+
+    /* Rider Roster Drawer */
+    .roster-card {
+      position: absolute;
+      top: 75px;
+      right: 12px;
+      background: rgba(20, 20, 20, 0.88);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 12px;
+      z-index: 1000;
+      max-width: 220px;
+      line-height: 1.5;
+    }
+
+    /* Bottom Quick-Alert Buttons (Glove-Friendly) */
+    .alert-dock {
+      position: absolute;
+      bottom: 20px;
+      left: 8px;
+      right: 8px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px;
+      z-index: 1000;
+    }
+    .alert-btn {
+      flex: 0 0 auto;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: transform 0.1s;
+    }
+    .alert-btn:active { transform: scale(0.95); }
+    .btn-cops { background: #1e88e5; }
+    .btn-road { background: #fb8c00; }
+    .btn-animal { background: #8e24aa; }
+    .btn-fuel { background: #e53935; }
+    .btn-breakdown { background: #b71c1c; }
+
+    /* Simulation & GPS Toggle Bar */
+    .dev-controls {
+      position: absolute;
+      top: 75px;
+      left: 12px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .dev-btn {
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      padding: 6px 10px;
+      font-size: 11px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Status -->
+  <div class="top-bar">
+    <div>
+      <h2 id="roomDisplay">Ride: NEPAL-SQUAD-1</h2>
+      <span id="destinationText">Dest: Pokhara Lakeside (83.98, 28.20)</span>
+    </div>
+    <div style="text-align: right;">
+      <span id="riderCount" style="color:#00e676; font-weight:bold;">1 Rider Online</span><br/>
+      <span id="mySpeed">0 km/h</span>
+    </div>
+  </div>
+
+  <!-- Rider Distance Table -->
+  <div class="roster-card" id="roster">
+    <strong>Squad Radar (Max 10):</strong>
+    <div id="rosterList" style="margin-top: 4px; color: #ccc;">Scanning riders...</div>
+  </div>
+
+  <!-- Test Controls -->
+  <div class="dev-controls">
+    <button class="dev-btn" onclick="toggleGPS()">📡 Toggle Real GPS</button>
+    <button class="dev-btn" onclick="simulateGroupRiders()">🤖 Simulate 3 Riders</button>
+  </div>
+
+  <!-- Bottom Rider Hazard Dispatcher -->
+  <div class="alert-dock">
+    <button class="alert-btn btn-cops" onclick="broadcastAlert('Traffic Police Checking')">👮 Cops Check</button>
+    <button class="alert-btn btn-road" onclick="broadcastAlert('Bad / Slippery Road')">⚠️ Bad Road</button>
+    <button class="alert-btn btn-animal" onclick="broadcastAlert('Animals on Road')">🐂 Cattle / Animals</button>
+    <button class="alert-btn btn-fuel" onclick="broadcastAlert('Low Fuel / Gas Station')">⛽ Low Fuel</button>
+    <button class="alert-btn btn-breakdown" onclick="broadcastAlert('Breakdown / Pulled Over')">🚨 Breakdown</button>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Leaflet JavaScript -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // ==========================================
+    // 1. CONFIGURATION & STATE
+    // ==========================================
+    const RIDE_ROOM = "nepal-ride-expedition-01";
+    const RIDER_ID = "rider_" + Math.floor(Math.random() * 10000);
+    let RIDER_NAME = prompt("Enter your Rider Name / Call-sign:", "Rider-" + RIDER_ID.slice(-3)) || "Solo Rider";
+
+    // Centered at Prithvi Highway corridor (Kathmandu towards Pokhara)
+    let myPosition = { lat: 27.7172, lng: 85.3240, heading: 0, speed: 0 };
+    const destination = { lat: 28.2096, lng: 83.9856, name: "Pokhara Lakeside" };
+
+    let riders = {}; // Holds up to 10 riders
+    let markers = {};
+    let watchId = null;
+
+    // ==========================================
+    // 2. MAP INITIALIZATION (Nepal Center)
+    // ==========================================
+    const map = L.map('map', { zoomControl: false }).setView([myPosition.lat, myPosition.lng], 13);
+
+    // High detail OpenStreetMap tile server
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // Destination Pin
+    const destIcon = L.divIcon({
+      html: '<div style="font-size:24px;">🏁</div>',
+      className: '',
+      iconAnchor: [12, 24]
+    });
+    L.marker([destination.lat, destination.lng], { icon: destIcon }).addTo(map)
+      .bindPopup(`<b>Destination</b><br>${destination.name}`);
+
+    // My Marker
+    const myIcon = L.divIcon({
+      html: '<div style="background:#00e676;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 10px #00e676;"></div>',
+      className: '',
+      iconAnchor: [8, 8]
+    });
+    markers['me'] = L.marker([myPosition.lat, myPosition.lng], { icon: myIcon }).addTo(map)
+      .bindPopup(`<b>${RIDER_NAME} (You)</b>`);
+
+    // ==========================================
+    // 3. VOICE ENGINE (Audio Alerts to Helmets)
+    // ==========================================
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel(); // Cancel any ongoing speech
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    // ==========================================
+    // 4. REAL-TIME MULTI-RIDER NETWORKING (MQTT)
+    // ==========================================
+    // Connects to a free public broker so phones communicate instantly
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+
+    client.on('connect', () => {
+      console.log("Connected to Realtime Ride Network");
+      // Subscribe to rider locations & alerts
+      client.subscribe(`moto/${RIDE_ROOM}/pos/+`);
+      client.subscribe(`moto/${RIDE_ROOM}/alerts`);
+
+      // Announce arrival
+      broadcastPosition();
+    });
+
+    client.on('message', (topic, payload) => {
+      try {
+        const data = JSON.parse(payload.toString());
+
+        if (topic.includes('/pos/')) {
+          handleIncomingRiderPosition(data);
+        } else if (topic.includes('/alerts')) {
+          handleIncomingAlert(data);
+        }
+      } catch (e) {
+        console.error("Payload error:", e);
+      }
+    });
+
+    function broadcastPosition() {
+      if (!client.connected) return;
+      const payload = {
+        id: RIDER_ID,
+        name: RIDER_NAME,
+        lat: myPosition.lat,
+        lng: myPosition.lng,
+        speed: myPosition.speed,
+        timestamp: Date.now()
+      };
+      client.publish(`moto/${RIDE_ROOM}/pos/${RIDER_ID}`, JSON.stringify(payload));
+    }
+
+    // Process other squad members' positions
+    function handleIncomingRiderPosition(data) {
+      if (data.id === RIDER_ID) return; // Ignore self
+
+      riders[data.id] = data;
+
+      // Update or create marker on map
+      if (!markers[data.id]) {
+        const bikeIcon = L.divIcon({
+          html: '<div style="background:#2979ff;width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 0 8px #2979ff;"></div>',
+          className: '',
+          iconAnchor: [7, 7]
+        });
+        markers[data.id] = L.marker([data.lat, data.lng], { icon: bikeIcon }).addTo(map);
+      } else {
+        markers[data.id].setLatLng([data.lat, data.lng]);
+      }
+
+      const distM = calculateDistance(myPosition.lat, myPosition.lng, data.lat, data.lng);
+      const distStr = distM > 1000 ? (distM / 1000).toFixed(1) + " km" : Math.round(distM) + " m";
+
+      markers[data.id].bindPopup(`<b>${data.name}</b><br>Speed: ${data.speed} km/h<br>Distance: ${distStr}`);
+
+      updateRosterUI();
+    }
+
+    // ==========================================
+    // 5. DISTANCE & SEPARATION WARNINGS
+    // ==========================================
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // Earth radius in meters
+      const p1 = lat1 * Math.PI / 180;
+      const p2 = lat2 * Math.PI / 180;
+      const dp = (lat2 - lat1) * Math.PI / 180;
+      const dl = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dp/2) * Math.sin(dp/2) +
+                Math.cos(p1) * Math.cos(p2) *
+                Math.sin(dl/2) * Math.sin(dl/2);
+      return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+    }
+
+    function updateRosterUI() {
+      const riderKeys = Object.keys(riders);
+      document.getElementById('riderCount').innerText = `${riderKeys.length + 1} Riders Online`;
+
+      let html = "";
+      riderKeys.forEach(id => {
+        const r = riders[id];
+        const distM = calculateDistance(myPosition.lat, myPosition.lng, r.lat, r.lng);
+        const distStr = distM > 1000 ? (distM/1000).toFixed(1) + " km" : Math.round(distM) + " m";
+
+        html += `<div>• <b>${r.name}</b>: ${distStr} (${r.speed} km/h)</div>`;
+
+        // Trigger voice alert if a friend drops far behind
+        if (distM > 800 && !r.alertedSeparation) {
+          speak(`Heads up! ${r.name} has fallen 800 meters behind.`);
+          r.alertedSeparation = true;
+        }
+      });
+
+      document.getElementById('rosterList').innerHTML = html || "No riders within range";
+    }
+
+    // ==========================================
+    // 6. HAZARD WARNING DISPATCHER
+    // ==========================================
+    function broadcastAlert(type) {
+      const alertPayload = {
+        type: type,
+        reporter: RIDER_NAME,
+        lat: myPosition.lat,
+        lng: myPosition.lng,
+        timestamp: Date.now()
+      };
+      client.publish(`moto/${RIDE_ROOM}/alerts`, JSON.stringify(alertPayload));
+      speak(`${type} alert transmitted to squad.`);
+    }
+
+    function handleIncomingAlert(alert) {
+      // Create hazard pin on map
+      const hazardIcon = L.divIcon({
+        html: '<div style="font-size:22px;">⚠️</div>',
+        className: '',
+        iconAnchor: [11, 22]
+      });
+      L.marker([alert.lat, alert.lng], { icon: hazardIcon })
+        .addTo(map)
+        .bindPopup(`<b>${alert.type}</b><br>Reported by ${alert.reporter}`)
+        .openPopup();
+
+      const dist = Math.round(calculateDistance(myPosition.lat, myPosition.lng, alert.lat, alert.lng));
+      // Voice alert into earphones
+      speak(`Warning! ${alert.type} reported ${dist} meters ahead by ${alert.reporter}`);
+    }
+
+    // ==========================================
+    // 7. REAL GPS & DESK SIMULATOR
+    // ==========================================
+    function toggleGPS() {
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        alert("GPS disabled. Back to manual.");
+      } else {
+        if (!navigator.geolocation) return alert("Geolocation not supported");
+        watchId = navigator.geolocation.watchPosition((pos) => {
+          myPosition.lat = pos.coords.latitude;
+          myPosition.lng = pos.coords.longitude;
+          myPosition.speed = Math.round((pos.coords.speed || 0) * 3.6);
+          document.getElementById('mySpeed').innerText = `${myPosition.speed} km/h`;
+
+          markers['me'].setLatLng([myPosition.lat, myPosition.lng]);
+          map.panTo([myPosition.lat, myPosition.lng]);
+          broadcastPosition();
+        }, (err) => console.error(err), { enableHighAccuracy: true });
+        alert("Real GPS Tracking Activated!");
+      }
+    }
+
+    // Simulate 3 moving riders along the Prithvi Highway towards Mugling
+    function simulateGroupRiders() {
+      const mockFriends = [
+        { id: "sim_1", name: "Aayush (Lead)", lat: myPosition.lat + 0.005, lng: myPosition.lng + 0.005, speed: 58 },
+        { id: "sim_2", name: "Bikash (Mid)",  lat: myPosition.lat - 0.003, lng: myPosition.lng - 0.002, speed: 52 },
+        { id: "sim_3", name: "Suman (Tail)", lat: myPosition.lat - 0.008, lng: myPosition.lng - 0.006, speed: 44 }
+      ];
+
+      mockFriends.forEach(f => handleIncomingRiderPosition(f));
+
+      // Animate them moving along the road
+      setInterval(() => {
+        mockFriends.forEach(f => {
+          f.lat += (Math.random() - 0.49) * 0.0005;
+          f.lng += (Math.random() - 0.49) * 0.0005;
+          f.speed = Math.floor(45 + Math.random() * 20);
+          handleIncomingRiderPosition(f);
+        });
+      }, 2500);
+
+      speak("Simulation active. Three squad riders connected on radar.");
+    }
+
+    // Periodic coordinate sync (every 3 seconds)
+    setInterval(broadcastPosition, 3000);
+  </script>
+</body>
+</html>
