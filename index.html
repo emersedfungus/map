@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>MotoSquad Nepal - Group Ride HUD</title>
+  <title>MotoSquad Nepal - Group Ride & Highway HUD</title>
 
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -14,7 +14,7 @@
     :root {
       --primary: #00ff66;
       --bg-black: #000000;
-      --border-high-contrast: #2a2a2a;
+      --border-high-contrast: #2e2e2e;
       --text-white: #ffffff;
       --text-yellow: #ffeb3b;
       --text-cyan: #00e5ff;
@@ -23,70 +23,93 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body, html { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: var(--text-white); }
 
-    /* Map container */
     #map { width: 100vw; height: 100vh; z-index: 1; }
 
     /* ================= AUTH MODAL ================= */
     .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
-      display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 16px;
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.94);
+      display: flex; align-items: center; justify-content: center; z-index: 2500; padding: 16px;
     }
     .auth-card {
-      background: var(--bg-black); width: 100%; max-width: 400px; border-radius: 16px;
-      padding: 26px; border: 2px solid #333333; box-shadow: 0 10px 40px rgba(0,0,0,1);
+      background: var(--bg-black); width: 100%; max-width: 420px; border-radius: 16px;
+      padding: 24px; border: 2px solid #333333; box-shadow: 0 10px 40px rgba(0,0,0,1);
+      max-height: 90vh; overflow-y: auto;
     }
-    .auth-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 8px; }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 18px; border-bottom: 1px solid #333; padding-bottom: 8px; }
     .auth-tab {
       flex: 1; text-align: center; padding: 8px; font-weight: 800; font-size: 14px;
       cursor: pointer; color: #888; border-radius: 8px;
     }
     .auth-tab.active { color: var(--primary); background: #111; border: 1px solid #333; }
     
-    .form-group { margin-bottom: 14px; }
-    .form-group label { display: block; font-size: 11px; color: #aaa; margin-bottom: 6px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 11px; color: #aaa; margin-bottom: 5px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
     .form-group input, .form-group select {
-      width: 100%; padding: 12px; border-radius: 8px; background: #111111; border: 1px solid #444;
+      width: 100%; padding: 11px; border-radius: 8px; background: #111111; border: 1px solid #444;
       color: #fff; font-size: 14px; outline: none; font-weight: 600;
     }
     .form-group input:focus { border-color: var(--primary); }
     
     .btn-main {
-      width: 100%; padding: 14px; border-radius: 10px; background: var(--primary); color: #000;
-      border: none; font-weight: 800; font-size: 14px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;
+      width: 100%; padding: 13px; border-radius: 10px; background: var(--primary); color: #000;
+      border: none; font-weight: 800; font-size: 13px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px;
+    }
+    .btn-secondary {
+      background: #222; color: #fff; border: 1px solid #444; padding: 9px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer;
     }
     .auth-notice { font-size: 12px; color: var(--primary); background: #0a2012; border: 1px solid #00ff66; padding: 10px; border-radius: 8px; margin-bottom: 14px; display: none; }
 
-    /* ================= SOLID BLACK TOP HUD BAR ================= */
+    /* ================= SOLID BLACK TOP HUD ================= */
     .hud-header {
       position: absolute; top: 12px; left: 12px; right: 12px; z-index: 1000;
-      background: var(--bg-black); border-radius: 12px; padding: 12px 18px; border: 2px solid #333333;
+      background: var(--bg-black); border-radius: 12px; padding: 10px 16px; border: 2px solid #333;
       display: flex; justify-content: space-between; align-items: center; box-shadow: 0 6px 20px rgba(0,0,0,0.9);
     }
-    .hud-title { font-size: 16px; font-weight: 900; color: var(--primary); display: flex; align-items: center; gap: 10px; letter-spacing: 0.5px; }
-    .trip-code-tag { background: #1a1a1a; color: var(--text-yellow); border: 1px solid #555; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-family: monospace; font-weight: 800; }
-    .hud-user { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 600; }
-    .hud-user button { background: #1a1a1a; border: 1px solid #444; color: #fff; padding: 7px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+    .hud-title { font-size: 15px; font-weight: 900; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+    .trip-code-tag { background: #1a1a1a; color: var(--text-yellow); border: 1px solid #555; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-family: monospace; font-weight: 800; }
+    
+    /* Live Speedometer & Remainder */
+    .hud-stats { display: flex; align-items: center; gap: 14px; text-align: right; }
+    .stat-pill { font-size: 13px; font-weight: 800; }
+    .stat-pill small { display: block; font-size: 9px; color: #888; text-transform: uppercase; }
 
     /* ================= SOLID BLACK SIDE RADAR ================= */
     .side-panel {
-      position: absolute; top: 82px; left: 12px; z-index: 1000;
-      display: flex; flex-direction: column; gap: 10px; width: 290px;
+      position: absolute; top: 76px; left: 12px; z-index: 1000;
+      display: flex; flex-direction: column; gap: 8px; width: 280px;
     }
     .hud-card {
-      background: var(--bg-black); border-radius: 12px; padding: 14px; border: 2px solid #333333;
-      font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,0.9);
+      background: var(--bg-black); border-radius: 12px; padding: 12px; border: 2px solid #333;
+      font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.9);
     }
-    .hud-card h4 { font-size: 12px; text-transform: uppercase; color: var(--text-cyan); margin-bottom: 6px; letter-spacing: 0.5px; font-weight: 800; }
+    .hud-card h4 { font-size: 11px; text-transform: uppercase; color: var(--text-cyan); margin-bottom: 4px; letter-spacing: 0.5px; font-weight: 800; }
 
-    /* ================= BOTTOM HAZARD BUTTONS ================= */
+    /* ================= FLOATING ACTION CONTROLS ================= */
+    .floating-actions {
+      position: absolute; right: 14px; top: 76px; z-index: 1000;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .action-circle-btn {
+      width: 44px; height: 44px; border-radius: 50%; background: #000; color: #fff;
+      border: 2px solid #444; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+    }
+
+    /* Picking Mode Banner */
+    #pickBanner {
+      position: absolute; top: 76px; left: 50%; transform: translateX(-50%); z-index: 1500;
+      background: #ffeb3b; color: #000; font-weight: 800; font-size: 12px; padding: 8px 16px;
+      border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: none;
+    }
+
+    /* ================= BOTTOM HAZARDS ================= */
     .alert-dock {
-      position: absolute; bottom: 16px; left: 8px; right: 8px; z-index: 1000;
-      display: flex; gap: 8px; overflow-x: auto; padding: 6px;
+      position: absolute; bottom: 14px; left: 8px; right: 8px; z-index: 1000;
+      display: flex; gap: 8px; overflow-x: auto; padding: 4px;
     }
     .alert-btn {
-      flex: 0 0 auto; padding: 14px 18px; border: 2px solid rgba(255,255,255,0.2); border-radius: 12px;
-      color: #fff; font-weight: 800; font-size: 13px; cursor: pointer; text-transform: uppercase;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.8);
+      flex: 0 0 auto; padding: 12px 16px; border: 2px solid rgba(255,255,255,0.2); border-radius: 12px;
+      color: #fff; font-weight: 800; font-size: 12px; cursor: pointer; text-transform: uppercase;
     }
     .btn-cops { background: #0d47a1; }
     .btn-road { background: #e65100; }
@@ -103,6 +126,9 @@
   </style>
 </head>
 <body>
+
+  <!-- Map Pick Helper Banner -->
+  <div id="pickBanner">📍 Tap anywhere on map to set point</div>
 
   <!-- ================= AUTH MODAL ================= -->
   <div class="modal-overlay" id="authModal">
@@ -132,7 +158,7 @@
       <form id="formSignup" style="display: none;" onsubmit="handleSignup(event)">
         <div class="form-group">
           <label>Rider Handle / Name</label>
-          <input type="text" id="regName" placeholder="e.g. Bikash (Thunder Lead)" required />
+          <input type="text" id="regName" placeholder="e.g. Bikash (Lead)" required />
         </div>
         <div class="form-group">
           <label>Motorcycle Model</label>
@@ -149,106 +175,131 @@
         <button type="submit" class="btn-main">Send Verification Code</button>
       </form>
 
-      <!-- OTP Verification Step -->
+      <!-- OTP Verification Form -->
       <form id="formVerify" style="display: none;" onsubmit="handleVerify(event)">
-        <p style="font-size: 13px; color: #ccc; margin-bottom: 12px; line-height: 1.4;">
-          A 6-digit confirmation code was sent to your email. Enter it below to activate your account.
+        <p style="font-size: 12px; color: #ccc; margin-bottom: 12px; line-height: 1.4;">
+          A 6-digit confirmation code was dispatched. Enter it below to activate your account.
         </p>
         <div class="form-group">
           <label>6-Digit Verification Code</label>
           <input type="text" id="verifyCode" maxlength="6" style="letter-spacing: 6px; font-size: 22px; text-align: center; color: var(--primary);" required />
         </div>
-        <button type="submit" class="btn-main">Verify & Activate Account</button>
+        <button type="submit" class="btn-main">Verify & Activate</button>
       </form>
     </div>
   </div>
 
-  <!-- ================= TRIP PLANNER MODAL ================= -->
+  <!-- ================= CUSTOM TRIP PLANNER MODAL ================= -->
   <div class="modal-overlay" id="tripModal" style="display: none;">
-    <div class="auth-card" style="max-width: 440px;">
-      <h3 style="margin-bottom: 8px; color: var(--primary);">🗺️ Plan Highway Route</h3>
-      <p style="font-size: 12px; color: #aaa; margin-bottom: 16px;">
-        Choose your start and finish. A shared Trip Code will be generated for your squad.
+    <div class="auth-card">
+      <h3 style="margin-bottom: 6px; color: var(--primary);">🗺️ Plan Custom Route</h3>
+      <p style="font-size: 11px; color: #aaa; margin-bottom: 14px;">
+        Choose presets or pick anywhere in Nepal. You can also drag the 🟢 Start & 🏁 Finish pins on the map at any time!
       </p>
 
       <div class="form-group">
         <label>Trip Title</label>
-        <input type="text" id="tripTitle" value="Kathmandu to Pokhara Run" />
+        <input type="text" id="tripTitleInput" value="Kathmandu - Pokhara Run" />
       </div>
 
+      <!-- Start Point Customizer -->
       <div class="form-group">
-        <label>Start Location</label>
-        <select id="startSelect">
-          <option value="27.7172,85.3240">Kathmandu (Kalanki / Ring Road)</option>
-          <option value="27.8724,84.5828">Kurintar / Mugling</option>
-          <option value="28.2096,83.9856">Pokhara Lakeside</option>
-          <option value="27.5833,84.5000">Chitwan (Sauraha)</option>
+        <label>🟢 Start Point</label>
+        <div style="display:flex; gap:6px; margin-bottom: 6px;">
+          <input type="text" id="startCoordInput" placeholder="27.7172, 85.3240" />
+          <button class="btn-secondary" onclick="startPicking('start')">📍 Pick on Map</button>
+        </div>
+        <button type="button" class="btn-secondary" style="width:100%;" onclick="useCurrentGpsForStart()">🎯 Set to My Current GPS</button>
+      </div>
+
+      <!-- Destination Point Customizer -->
+      <div class="form-group">
+        <label>🏁 Destination (Finish Line)</label>
+        <div style="display:flex; gap:6px; margin-bottom: 6px;">
+          <input type="text" id="destCoordInput" placeholder="28.2096, 83.9856" />
+          <button class="btn-secondary" onclick="startPicking('dest')">📍 Pick on Map</button>
+        </div>
+        <!-- Highway Presets -->
+        <select onchange="applyPreset(this.value)" style="margin-top: 4px;">
+          <option value="">-- Or Choose Nepal Highway Preset --</option>
+          <option value="pokhara">Pokhara Lakeside</option>
+          <option value="chitwan">Chitwan (Sauraha)</option>
+          <option value="kurintar">Kurintar / Cable Car</option>
+          <option value="mustang">Jomsom / Mustang Gateway</option>
+          <option value="dharan">BP Highway / Dharan</option>
         </select>
       </div>
 
-      <div class="form-group">
-        <label>Destination (Finish Line)</label>
-        <select id="destSelect">
-          <option value="28.2096,83.9856" selected>Pokhara Lakeside</option>
-          <option value="28.8000,83.9800">Manang / Mustang Highway</option>
-          <option value="27.5833,84.5000">Chitwan (Sauraha)</option>
-          <option value="27.7172,85.3240">Kathmandu Return</option>
-        </select>
-      </div>
-
-      <div style="display: flex; gap: 8px;">
+      <div style="display: flex; gap: 8px; margin-top: 12px;">
         <button class="btn-main" onclick="confirmTripPlan()">Build Route</button>
         <button class="btn-main" style="background:#222; color:#fff;" onclick="toggleTripModal(false)">Close</button>
       </div>
 
-      <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0 14px 0;" />
+      <hr style="border: 0; border-top: 1px solid #333; margin: 16px 0 10px 0;" />
       
-      <!-- Join an Existing Trip Code -->
-      <h4 style="font-size: 13px; color: var(--text-yellow); margin-bottom: 8px;">Join Squad with Code</h4>
+      <h4 style="font-size: 12px; color: var(--text-yellow); margin-bottom: 6px;">Join Squad with Code</h4>
       <div style="display: flex; gap: 8px;">
         <input type="text" id="joinTripCodeInput" placeholder="e.g. MOTO-892" style="text-transform: uppercase;" />
-        <button class="btn-main" style="width: auto; padding: 0 16px; margin: 0;" onclick="joinExistingTrip()">Join</button>
+        <button class="btn-main" style="width: auto; padding: 0 14px; margin: 0;" onclick="joinExistingTrip()">Join</button>
       </div>
     </div>
   </div>
 
   <!-- ================= TOP HUD (SOLID BLACK) ================= -->
   <div class="hud-header">
-    <div class="hud-title">
-      <span>🏍️ MOTOSQUAD</span>
-      <span class="trip-code-tag" id="tripCodeBadge">NO TRIP</span>
+    <div>
+      <div class="hud-title">
+        <span>🏍️ MOTOSQUAD</span>
+        <span class="trip-code-tag" id="tripCodeBadge">NO TRIP</span>
+      </div>
+      <div style="font-size: 11px; color: #888;" id="userNameBadge">Rider</div>
     </div>
-    <div class="hud-user">
-      <span id="userNameBadge" style="color: #fff;">Rider</span>
-      <button onclick="toggleTripModal(true)">Trip Plan</button>
-      <button onclick="handleLogout()">Logout</button>
+
+    <!-- Live Telemetry Stats -->
+    <div class="hud-stats">
+      <div class="stat-pill">
+        <span id="speedValue" style="color: var(--primary); font-size: 17px;">0</span> <span style="font-size:11px;">km/h</span>
+        <small>Speed</small>
+      </div>
+      <div class="stat-pill">
+        <span id="remainingDistValue" style="color: var(--text-yellow); font-size: 17px;">--</span>
+        <small>To Finish</small>
+      </div>
+      <div>
+        <button class="btn-secondary" style="padding: 6px 10px;" onclick="toggleTripModal(true)">Trip</button>
+        <button class="btn-secondary" style="padding: 6px 10px;" onclick="handleLogout()">Exit</button>
+      </div>
     </div>
   </div>
 
-  <!-- ================= SIDE PANEL (RADAR & GPS) ================= -->
+  <!-- ================= SIDE PANEL (RADAR & ROUTE) ================= -->
   <div class="side-panel">
-    <!-- Active Trip Summary -->
+    <!-- Active Route Overview -->
     <div class="hud-card">
-      <h4 id="displayTripTitle">No Active Trip</h4>
-      <div style="font-size: 12px; color: #fff; line-height: 1.5;" id="displayRouteStats">
-        Open <b>Trip Plan</b> to select highway route.
+      <h4 id="displayTripTitle">Trip Route</h4>
+      <div style="font-size: 11px; color: #fff; line-height: 1.5;" id="displayRouteStats">
+        Start & Finish pins are <b>draggable</b> on map.
       </div>
     </div>
 
-    <!-- Squad Distance Radar -->
+    <!-- Squad Radar -->
     <div class="hud-card">
       <h4>Squad Radar (<span id="squadCount" style="color: var(--primary);">1</span>/10)</h4>
-      <div id="rosterList" style="color: #fff; font-size: 12px; line-height: 1.6;">
+      <div id="rosterList" style="color: #fff; font-size: 11px; line-height: 1.5;">
         Solo mode. Waiting for riders...
       </div>
     </div>
 
-    <!-- Real GPS Toggle -->
-    <div class="hud-card" style="padding: 10px;">
-      <button id="gpsBtn" style="width: 100%; padding: 12px; background: #00e5ff; color: #000; border: none; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; text-transform: uppercase;" onclick="toggleGPS()">
-        📡 Turn On Real GPS
-      </button>
-    </div>
+    <!-- GPS Toggle -->
+    <button id="gpsBtn" style="padding: 11px; background: var(--text-cyan); color: #000; border: none; border-radius: 10px; font-weight: 800; font-size: 12px; cursor: pointer; text-transform: uppercase;" onclick="toggleGPS()">
+      📡 Turn On Real GPS
+    </button>
+  </div>
+
+  <!-- ================= FLOATING MAP BUTTONS ================= -->
+  <div class="floating-actions">
+    <button class="action-circle-btn" onclick="toggleMapType()" title="Switch Map View">🗺️</button>
+    <button class="action-circle-btn" onclick="centerOnMe()" title="Center on my bike">🎯</button>
   </div>
 
   <!-- ================= BOTTOM HAZARDS ================= -->
@@ -267,7 +318,7 @@
 
   <script>
     // ==========================================
-    // 1. STATE & AUTH MANAGEMENT
+    // 1. STATE & AUTH
     // ==========================================
     let currentUser = null;
     let pendingVerificationEmail = null;
@@ -275,9 +326,9 @@
 
     let activeTrip = {
       code: "SOLO",
-      title: "Solo Scout",
-      start: { lat: 27.7172, lng: 85.3240, name: "Kathmandu" },
-      dest: { lat: 28.2096, lng: 83.9856, name: "Pokhara Lakeside" },
+      title: "Kathmandu - Pokhara Run",
+      start: { lat: 27.7172, lng: 85.3240, name: "Start Point" },
+      dest: { lat: 28.2096, lng: 83.9856, name: "Finish Line" },
       totalKm: 0
     };
 
@@ -286,6 +337,11 @@
     let routeLayer = null;
     let myPosition = { lat: 27.7172, lng: 85.3240, speed: 0 };
     let watchId = null;
+    let isPickingPoint = null; // 'start' or 'dest'
+
+    // Draggable Start/Finish Markers
+    let startMarker = null;
+    let destMarker = null;
 
     window.addEventListener('DOMContentLoaded', () => {
       initMap();
@@ -401,31 +457,125 @@
     function onUserAuthenticated() {
       document.getElementById('authModal').style.display = 'none';
       document.getElementById('userNameBadge').innerText = `${currentUser.name} (${currentUser.bike})`;
-      speak(`Welcome back ${currentUser.name}. MotoSquad radar active.`);
+      speak(`Welcome ${currentUser.name}. MotoSquad radar active.`);
       initMQTT();
+      renderCustomTripPins();
+      calculateHighwayRoute(activeTrip.start.lat, activeTrip.start.lng, activeTrip.dest.lat, activeTrip.dest.lng);
     }
 
     // ==========================================
-    // 2. LEAFLET MAP & OSRM ROUTE
+    // 2. LEAFLET MAP & MULTIPLE MAP TYPES
     // ==========================================
     let map;
+    let baseLayers = {};
+    let currentMapLayerIndex = 0;
+    const mapLayerKeys = ['default', 'satellite', 'dark'];
+
     function initMap() {
-      map = L.map('map', { zoomControl: false }).setView([27.7172, 85.3240], 11);
+      // 1. Default OpenStreetMap (Clean highway street view)
+      baseLayers['default'] = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '© OpenStreetMap'
+      });
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(map);
+      // 2. Satellite Layer (Esri World Imagery - perfect for off-road/terrain inspection)
+      baseLayers['satellite'] = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 18, attribution: '© Esri Satellite'
+      });
 
+      // 3. Dark HUD Layer (Carto Dark Matter for night highway visibility)
+      baseLayers['dark'] = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19, attribution: '© CartoDB'
+      });
+
+      map = L.map('map', { zoomControl: false, layers: [baseLayers['default']] }).setView([27.7172, 85.3240], 11);
+
+      // Rider Marker (Me)
       const myIcon = L.divIcon({
         className: 'custom-icon',
         html: '<div class="pulse-pin" style="background:#00ff66;"></div>',
         iconAnchor: [8, 8]
       });
       markers['me'] = L.marker([myPosition.lat, myPosition.lng], { icon: myIcon }).addTo(map)
-        .bindPopup("<b>You (Leader/Rider)</b>");
+        .bindPopup("<b>Your Bike</b>");
+
+      // Map Click Handler for Custom Point Selection
+      map.on('click', (e) => {
+        if (isPickingPoint) {
+          if (isPickingPoint === 'start') {
+            activeTrip.start.lat = e.latlng.lat;
+            activeTrip.start.lng = e.latlng.lng;
+            document.getElementById('startCoordInput').value = `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+          } else if (isPickingPoint === 'dest') {
+            activeTrip.dest.lat = e.latlng.lat;
+            activeTrip.dest.lng = e.latlng.lng;
+            document.getElementById('destCoordInput').value = `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+          }
+          isPickingPoint = null;
+          document.getElementById('pickBanner').style.display = 'none';
+          document.getElementById('tripModal').style.display = 'flex';
+        }
+      });
     }
 
+    // Toggle between Default -> Satellite -> Dark
+    function toggleMapType() {
+      map.removeLayer(baseLayers[mapLayerKeys[currentMapLayerIndex]]);
+      currentMapLayerIndex = (currentMapLayerIndex + 1) % mapLayerKeys.length;
+      const nextKey = mapLayerKeys[currentMapLayerIndex];
+      map.addLayer(baseLayers[nextKey]);
+
+      const titles = { 'default': 'Default Streets', 'satellite': 'Satellite Terrain', 'dark': 'Night HUD' };
+      speak(`${titles[nextKey]} map mode.`);
+    }
+
+    function centerOnMe() {
+      map.panTo([myPosition.lat, myPosition.lng]);
+    }
+
+    // ==========================================
+    // 3. DRAGGABLE & CUSTOMIZABLE START/FINISH PINS
+    // ==========================================
+    function renderCustomTripPins() {
+      // 1. Start Pin (Draggable)
+      const startIcon = L.divIcon({
+        html: '<div style="font-size:24px; filter:drop-shadow(0 2px 4px #000);">🟢</div>',
+        iconAnchor: [12, 24]
+      });
+
+      if (startMarker) map.removeLayer(startMarker);
+      startMarker = L.marker([activeTrip.start.lat, activeTrip.start.lng], {
+        icon: startIcon, draggable: true
+      }).addTo(map).bindPopup("<b>🟢 Start Line</b><br>Drag me anywhere!");
+
+      startMarker.on('dragend', (e) => {
+        const pos = e.target.getLatLng();
+        activeTrip.start.lat = pos.lat;
+        activeTrip.start.lng = pos.lng;
+        calculateHighwayRoute(pos.lat, pos.lng, activeTrip.dest.lat, activeTrip.dest.lng);
+        speak("Start position updated.");
+      });
+
+      // 2. Finish Pin (Draggable)
+      const destIcon = L.divIcon({
+        html: '<div style="font-size:24px; filter:drop-shadow(0 2px 4px #000);">🏁</div>',
+        iconAnchor: [12, 24]
+      });
+
+      if (destMarker) map.removeLayer(destMarker);
+      destMarker = L.marker([activeTrip.dest.lat, activeTrip.dest.lng], {
+        icon: destIcon, draggable: true
+      }).addTo(map).bindPopup("<b>🏁 Finish Line</b><br>Drag me anywhere!");
+
+      destMarker.on('dragend', (e) => {
+        const pos = e.target.getLatLng();
+        activeTrip.dest.lat = pos.lat;
+        activeTrip.dest.lng = pos.lng;
+        calculateHighwayRoute(activeTrip.start.lat, activeTrip.start.lng, pos.lat, pos.lng);
+        speak("Finish destination updated.");
+      });
+    }
+
+    // OSRM Driving Engine
     async function calculateHighwayRoute(startLat, startLng, destLat, destLng) {
       try {
         const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
@@ -439,46 +589,73 @@
           if (routeLayer) map.removeLayer(routeLayer);
 
           routeLayer = L.geoJSON(route.geometry, {
-            style: { color: '#00ff66', weight: 5, opacity: 0.85 }
+            style: { color: '#00ff66', weight: 6, opacity: 0.9 }
           }).addTo(map);
 
-          map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
-
           document.getElementById('displayRouteStats').innerHTML = 
-            `Start: <b>${activeTrip.start.name}</b><br/>Finish: <b>${activeTrip.dest.name}</b><br/>Distance: <b style="color:var(--text-yellow); font-size:14px;">${activeTrip.totalKm} km</b>`;
+            `Start: <b>${activeTrip.start.lat.toFixed(3)}, ${activeTrip.start.lng.toFixed(3)}</b><br/>Finish: <b>${activeTrip.dest.lat.toFixed(3)}, ${activeTrip.dest.lng.toFixed(3)}</b><br/>Route: <b style="color:var(--text-yellow); font-size:14px;">${activeTrip.totalKm} km</b>`;
+
+          updateDistanceToFinish();
         }
       } catch (err) {
         console.warn("Could not fetch route geometry", err);
       }
     }
 
+    function updateDistanceToFinish() {
+      const distM = calculateDistance(myPosition.lat, myPosition.lng, activeTrip.dest.lat, activeTrip.dest.lng);
+      const distStr = distM > 1000 ? (distM / 1000).toFixed(1) + " km" : Math.round(distM) + " m";
+      document.getElementById('remainingDistValue').innerText = distStr;
+    }
+
     // ==========================================
-    // 3. TRIP PLANNING ENGINE
+    // 4. TRIP PLANNING HELPERS
     // ==========================================
     function toggleTripModal(show) {
       document.getElementById('tripModal').style.display = show ? 'flex' : 'none';
+      if (show) {
+        document.getElementById('startCoordInput').value = `${activeTrip.start.lat.toFixed(4)}, ${activeTrip.start.lng.toFixed(4)}`;
+        document.getElementById('destCoordInput').value = `${activeTrip.dest.lat.toFixed(4)}, ${activeTrip.dest.lng.toFixed(4)}`;
+      }
+    }
+
+    function startPicking(type) {
+      isPickingPoint = type;
+      document.getElementById('tripModal').style.display = 'none';
+      document.getElementById('pickBanner').style.display = 'block';
+    }
+
+    function useCurrentGpsForStart() {
+      activeTrip.start.lat = myPosition.lat;
+      activeTrip.start.lng = myPosition.lng;
+      document.getElementById('startCoordInput').value = `${myPosition.lat.toFixed(4)}, ${myPosition.lng.toFixed(4)}`;
+      speak("Start set to current position.");
+    }
+
+    function applyPreset(presetKey) {
+      const presets = {
+        'pokhara': { lat: 28.2096, lng: 83.9856 },
+        'chitwan': { lat: 27.5833, lng: 84.5000 },
+        'kurintar': { lat: 27.8724, lng: 84.5828 },
+        'mustang': { lat: 28.7834, lng: 83.7383 },
+        'dharan': { lat: 26.8124, lng: 87.2834 }
+      };
+      if (presets[presetKey]) {
+        activeTrip.dest.lat = presets[presetKey].lat;
+        activeTrip.dest.lng = presets[presetKey].lng;
+        document.getElementById('destCoordInput').value = `${presets[presetKey].lat.toFixed(4)}, ${presets[presetKey].lng.toFixed(4)}`;
+      }
     }
 
     function confirmTripPlan() {
-      const title = document.getElementById('tripTitle').value;
-      const startParts = document.getElementById('startSelect').value.split(',');
-      const destParts = document.getElementById('destSelect').value.split(',');
-
-      const startName = document.getElementById('startSelect').options[document.getElementById('startSelect').selectedIndex].text;
-      const destName = document.getElementById('destSelect').options[document.getElementById('destSelect').selectedIndex].text;
-
+      activeTrip.title = document.getElementById('tripTitleInput').value;
       const tripCode = "MOTO-" + Math.floor(100 + Math.random() * 900);
-
-      activeTrip = {
-        code: tripCode,
-        title: title,
-        start: { lat: parseFloat(startParts[0]), lng: parseFloat(startParts[1]), name: startName },
-        dest: { lat: parseFloat(destParts[0]), lng: parseFloat(destParts[1]), name: destName }
-      };
+      activeTrip.code = tripCode;
 
       document.getElementById('tripCodeBadge').innerText = activeTrip.code;
       document.getElementById('displayTripTitle').innerText = activeTrip.title;
 
+      renderCustomTripPins();
       calculateHighwayRoute(activeTrip.start.lat, activeTrip.start.lng, activeTrip.dest.lat, activeTrip.dest.lng);
       toggleTripModal(false);
 
@@ -486,7 +663,7 @@
         mqttClient.publish(`motosquad/trips/${activeTrip.code}`, JSON.stringify(activeTrip));
       }
 
-      speak(`Trip planned for ${title}. Trip code is ${activeTrip.code.replace('-', ' ')}`);
+      speak(`Route planned. Trip code is ${activeTrip.code.replace('-', ' ')}`);
     }
 
     function joinExistingTrip() {
@@ -503,7 +680,7 @@
     }
 
     // ==========================================
-    // 4. REALTIME SQUAD RADAR (MQTT)
+    // 5. REALTIME SQUAD RADAR (MQTT)
     // ==========================================
     let mqttClient;
     function initMQTT() {
@@ -526,6 +703,7 @@
             activeTrip = data;
             document.getElementById('tripCodeBadge').innerText = activeTrip.code;
             document.getElementById('displayTripTitle').innerText = activeTrip.title;
+            renderCustomTripPins();
             calculateHighwayRoute(activeTrip.start.lat, activeTrip.start.lng, activeTrip.dest.lat, activeTrip.dest.lng);
           }
         } catch (e) { console.error(e); }
@@ -582,7 +760,7 @@
     }
 
     // ==========================================
-    // 5. ROAD HAZARDS & AUDIO
+    // 6. ROAD HAZARDS & AUDIO
     // ==========================================
     function sendAlert(type) {
       const alertMsg = {
@@ -630,7 +808,7 @@
     }
 
     // ==========================================
-    // 6. REAL GPS CONTROLLER
+    // 7. REAL GPS CONTROLLER
     // ==========================================
     function toggleGPS() {
       const btn = document.getElementById('gpsBtn');
@@ -638,7 +816,7 @@
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
         btn.innerText = "📡 Turn On Real GPS";
-        btn.style.background = "#00e5ff";
+        btn.style.background = "var(--text-cyan)";
         btn.style.color = "#000";
         alert("GPS disabled.");
       } else {
@@ -647,15 +825,17 @@
           myPosition.lat = p.coords.latitude;
           myPosition.lng = p.coords.longitude;
           myPosition.speed = Math.round((p.coords.speed || 0) * 3.6);
+
+          document.getElementById('speedValue').innerText = myPosition.speed;
           markers['me'].setLatLng([myPosition.lat, myPosition.lng]);
-          map.panTo([myPosition.lat, myPosition.lng]);
+          updateDistanceToFinish();
           broadcastLocation();
         }, (e) => alert("GPS Error: " + e.message), { enableHighAccuracy: true });
 
-        btn.innerText = "🛑 Disable Real GPS";
+        btn.innerText = "🛑 Stop Real GPS";
         btn.style.background = "#ff3d00";
         btn.style.color = "#fff";
-        speak("GPS radar connected.");
+        speak("GPS tracking activated.");
       }
     }
 
