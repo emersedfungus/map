@@ -3,390 +3,671 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>MotoSquad Nepal - Group Ride HUD</title>
+  <title>MotoSquad Nepal - Group Ride & Trip Planner</title>
 
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- MQTT Web Client for zero-backend real-time syncing -->
+  <!-- MQTT WebSockets for live multi-rider sync -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <style>
+    :root {
+      --primary: #00e676;
+      --primary-hover: #00c853;
+      --bg-dark: #121212;
+      --card-bg: rgba(24, 24, 24, 0.95);
+      --border: #2a2a2a;
+      --text-main: #f0f0f0;
+      --text-muted: #9e9e9e;
+      --danger: #ff5252;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body, html { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    #map { width: 100%; height: 100vh; z-index: 1; }
+    body, html { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: var(--text-main); }
 
-    /* Top Ride Info Bar */
-    .top-bar {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      right: 12px;
-      background: rgba(18, 18, 18, 0.92);
-      backdrop-filter: blur(8px);
-      color: #fff;
-      padding: 12px 16px;
-      border-radius: 14px;
-      z-index: 1000;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    /* Map fills screen */
+    #map { width: 100vw; height: 100vh; z-index: 1; }
+
+    /* ================= AUTH MODAL ================= */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px);
+      display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 16px;
     }
-    .top-bar h2 { font-size: 15px; font-weight: 700; color: #00e676; }
-    .top-bar span { font-size: 13px; color: #bbb; }
-
-    /* Rider Roster Drawer */
-    .roster-card {
-      position: absolute;
-      top: 75px;
-      right: 12px;
-      background: rgba(20, 20, 20, 0.88);
-      color: #fff;
-      padding: 10px 14px;
-      border-radius: 12px;
-      font-size: 12px;
-      z-index: 1000;
-      max-width: 220px;
-      line-height: 1.5;
+    .auth-card {
+      background: var(--card-bg); width: 100%; max-width: 400px; border-radius: 18px;
+      padding: 28px; border: 1px solid var(--border); box-shadow: 0 10px 40px rgba(0,0,0,0.7);
     }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .auth-tab {
+      flex: 1; text-align: center; padding: 8px; font-weight: 700; font-size: 14px;
+      cursor: pointer; color: var(--text-muted); border-radius: 8px; transition: 0.2s;
+    }
+    .auth-tab.active { color: var(--primary); background: rgba(0, 230, 118, 0.1); }
+    
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; font-weight: 600; }
+    .form-group input, .form-group select {
+      width: 100%; padding: 12px; border-radius: 10px; background: #1c1c1c; border: 1px solid #333;
+      color: #fff; font-size: 14px; outline: none; transition: border-color 0.2s;
+    }
+    .form-group input:focus { border-color: var(--primary); }
+    
+    .btn-main {
+      width: 100%; padding: 14px; border-radius: 10px; background: var(--primary); color: #000;
+      border: none; font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.2s; margin-top: 8px;
+    }
+    .btn-main:hover { background: var(--primary-hover); }
+    .auth-notice { font-size: 12px; color: var(--primary); background: rgba(0, 230, 118, 0.12); padding: 10px; border-radius: 8px; margin-bottom: 14px; display: none; }
 
-    /* Bottom Quick-Alert Buttons (Glove-Friendly) */
+    /* ================= MAIN HUD OVERLAYS ================= */
+    .hud-header {
+      position: absolute; top: 12px; left: 12px; right: 12px; z-index: 1000;
+      background: var(--card-bg); border-radius: 14px; padding: 12px 18px; border: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .hud-title { font-size: 15px; font-weight: 800; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+    .trip-code-tag { background: #333; color: #ffeb3b; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-family: monospace; }
+    .hud-user { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+    .hud-user button { background: none; border: 1px solid #444; color: #bbb; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+
+    /* Trip Actions & Roster Drawer */
+    .side-panel {
+      position: absolute; top: 80px; left: 12px; z-index: 1000;
+      display: flex; flex-direction: column; gap: 8px; width: 280px;
+    }
+    .hud-card {
+      background: var(--card-bg); border-radius: 12px; padding: 14px; border: 1px solid var(--border);
+      font-size: 13px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    }
+    .hud-card h4 { font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+
+    /* Glove-friendly Bottom Alert Buttons */
     .alert-dock {
-      position: absolute;
-      bottom: 20px;
-      left: 8px;
-      right: 8px;
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding: 8px;
-      z-index: 1000;
+      position: absolute; bottom: 16px; left: 8px; right: 8px; z-index: 1000;
+      display: flex; gap: 8px; overflow-x: auto; padding: 6px;
     }
     .alert-btn {
-      flex: 0 0 auto;
-      padding: 12px 16px;
-      border: none;
-      border-radius: 12px;
-      color: #fff;
-      font-weight: 700;
-      font-size: 13px;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      transition: transform 0.1s;
+      flex: 0 0 auto; padding: 12px 16px; border: none; border-radius: 12px;
+      color: #fff; font-weight: 700; font-size: 13px; cursor: pointer;
     }
-    .alert-btn:active { transform: scale(0.95); }
-    .btn-cops { background: #1e88e5; }
-    .btn-road { background: #fb8c00; }
-    .btn-animal { background: #8e24aa; }
-    .btn-fuel { background: #e53935; }
-    .btn-breakdown { background: #b71c1c; }
+    .btn-cops { background: #1976d2; }
+    .btn-road { background: #f57c00; }
+    .btn-cattle { background: #7b1fa2; }
+    .btn-fuel { background: #d32f2f; }
+    .btn-breakdown { background: #c2185b; }
 
-    /* Simulation & GPS Toggle Bar */
-    .dev-controls {
-      position: absolute;
-      top: 75px;
-      left: 12px;
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    /* Marker Pulse */
+    .pulse-pin {
+      width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff;
+      animation: pulse 1.8s infinite;
     }
-    .dev-btn {
-      background: #333;
-      color: #fff;
-      border: 1px solid #555;
-      padding: 6px 10px;
-      font-size: 11px;
-      border-radius: 6px;
-      cursor: pointer;
-    }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0,230,118, 0.7); } 70% { box-shadow: 0 0 0 12px rgba(0,230,118, 0); } 100% { box-shadow: 0 0 0 0 rgba(0,230,118, 0); } }
   </style>
 </head>
 <body>
 
-  <!-- Top Status -->
-  <div class="top-bar">
-    <div>
-      <h2 id="roomDisplay">Ride: NEPAL-SQUAD-1</h2>
-      <span id="destinationText">Dest: Pokhara Lakeside (83.98, 28.20)</span>
+  <!-- ================= AUTH MODAL ================= -->
+  <div class="modal-overlay" id="authModal">
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tabLogin" onclick="switchAuthTab('login')">Log In</div>
+        <div class="auth-tab" id="tabSignup" onclick="switchAuthTab('signup')">Create Account</div>
+        <div class="auth-tab" id="tabVerify" style="display:none;" onclick="switchAuthTab('verify')">Verify OTP</div>
+      </div>
+
+      <div class="auth-notice" id="authNotice"></div>
+
+      <!-- Login Form -->
+      <form id="formLogin" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="loginEmail" placeholder="rider@nepal.com" required />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" required />
+        </div>
+        <button type="submit" class="btn-main">Launch MotoSquad</button>
+      </form>
+
+      <!-- Signup Form -->
+      <form id="formSignup" style="display: none;" onsubmit="handleSignup(event)">
+        <div class="form-group">
+          <label>Rider Name / Handle</label>
+          <input type="text" id="regName" placeholder="e.g. Bikash (Thunder Lead)" required />
+        </div>
+        <div class="form-group">
+          <label>Motorcycle Model</label>
+          <input type="text" id="regBike" placeholder="e.g. Himalayan 450 / Duke 390" required />
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="regEmail" placeholder="rider@nepal.com" required />
+        </div>
+        <div class="form-group">
+          <label>Create Password</label>
+          <input type="password" id="regPassword" placeholder="••••••••" required />
+        </div>
+        <button type="submit" class="btn-main">Send Verification Code</button>
+      </form>
+
+      <!-- Verification Step (Simulated OTP to Email) -->
+      <form id="formVerify" style="display: none;" onsubmit="handleVerify(event)">
+        <p style="font-size: 13px; color: #ccc; margin-bottom: 12px;">
+          A 6-digit confirmation code was dispatched to your email. Enter it below to activate your account.
+        </p>
+        <div class="form-group">
+          <label>6-Digit Verification Code</label>
+          <input type="text" id="verifyCode" maxlength="6" style="letter-spacing: 6px; font-size: 20px; text-align: center;" required />
+        </div>
+        <button type="submit" class="btn-main">Verify & Activate Account</button>
+      </form>
     </div>
-    <div style="text-align: right;">
-      <span id="riderCount" style="color:#00e676; font-weight:bold;">1 Rider Online</span><br/>
-      <span id="mySpeed">0 km/h</span>
+  </div>
+
+  <!-- ================= TRIP PLANNER MODAL ================= -->
+  <div class="modal-overlay" id="tripModal" style="display: none;">
+    <div class="auth-card" style="max-width: 440px;">
+      <h3 style="margin-bottom: 12px; color: var(--primary);">🗺️ Plan a Highway Trip</h3>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+        Define your start and finish. A shared Trip Code will be created for up to 10 squad riders.
+      </p>
+
+      <div class="form-group">
+        <label>Trip Title</label>
+        <input type="text" id="tripTitle" value="Kathmandu to Pokhara Run" />
+      </div>
+
+      <div class="form-group">
+        <label>Start Location</label>
+        <select id="startSelect">
+          <option value="27.7172,85.3240">Kathmandu (Kalanki / Ring Road)</option>
+          <option value="27.8724,84.5828">Kurintar / Mugling</option>
+          <option value="28.2096,83.9856">Pokhara Lakeside</option>
+          <option value="27.5833,84.5000">Chitwan (Sauraha)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Destination (Finish Line)</label>
+        <select id="destSelect">
+          <option value="28.2096,83.9856" selected>Pokhara Lakeside</option>
+          <option value="28.8000,83.9800">Manang / Mustang Highway</option>
+          <option value="27.5833,84.5000">Chitwan (Sauraha)</option>
+          <option value="27.7172,85.3240">Kathmandu Return</option>
+        </select>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button class="btn-main" onclick="confirmTripPlan()">Build Trip Route</button>
+        <button class="btn-main" style="background:#333; color:#fff;" onclick="toggleTripModal(false)">Cancel</button>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 20px 0 14px 0;" />
+      
+      <!-- Join an Existing Trip Code -->
+      <h4 style="font-size: 13px; color: #ffeb3b; margin-bottom: 8px;">Already have a Trip Code?</h4>
+      <div style="display: flex; gap: 8px;">
+        <input type="text" id="joinTripCodeInput" placeholder="e.g. MOTO-892" style="text-transform: uppercase;" />
+        <button class="btn-main" style="width: auto; padding: 0 16px; margin: 0;" onclick="joinExistingTrip()">Join</button>
+      </div>
     </div>
   </div>
 
-  <!-- Rider Distance Table -->
-  <div class="roster-card" id="roster">
-    <strong>Squad Radar (Max 10):</strong>
-    <div id="rosterList" style="margin-top: 4px; color: #ccc;">Scanning riders...</div>
+  <!-- ================= TOP HUD ================= -->
+  <div class="hud-header">
+    <div class="hud-title">
+      <span>🏍️ MotoSquad</span>
+      <span class="trip-code-tag" id="tripCodeBadge">NO TRIP</span>
+    </div>
+    <div class="hud-user">
+      <span id="userNameBadge">Rider</span>
+      <button onclick="toggleTripModal(true)">Trip Plan</button>
+      <button onclick="handleLogout()">Logout</button>
+    </div>
   </div>
 
-  <!-- Test Controls -->
-  <div class="dev-controls">
-    <button class="dev-btn" onclick="toggleGPS()">📡 Toggle Real GPS</button>
-    <button class="dev-btn" onclick="simulateGroupRiders()">🤖 Simulate 3 Riders</button>
+  <!-- ================= SIDE PANEL (RADAR & ROUTE) ================= -->
+  <div class="side-panel">
+    <!-- Trip Info -->
+    <div class="hud-card">
+      <h4 id="displayTripTitle">No Active Trip</h4>
+      <div style="font-size: 12px; color: #bbb;" id="displayRouteStats">Click 'Trip Plan' to generate a route.</div>
+    </div>
+
+    <!-- Squad Distance List -->
+    <div class="hud-card">
+      <h4>Squad Radar (<span id="squadCount">1</span>/10)</h4>
+      <div id="rosterList" style="color: #ccc; font-size: 12px; line-height: 1.6;">Solo ride mode.</div>
+    </div>
+
+    <!-- Dev / Simulation Buttons -->
+    <div class="hud-card" style="padding: 8px;">
+      <button style="width: 100%; padding: 8px; background: #263238; color: #80d8ff; border: none; border-radius: 6px; font-size: 11px; cursor: pointer; margin-bottom: 4px;" onclick="toggleGPS()">📡 Toggle Real GPS</button>
+      <button style="width: 100%; padding: 8px; background: #263238; color: #ffd54f; border: none; border-radius: 6px; font-size: 11px; cursor: pointer;" onclick="simulateRiders()">🤖 Simulate 3 Squad Riders</button>
+    </div>
   </div>
 
-  <!-- Bottom Rider Hazard Dispatcher -->
+  <!-- ================= BOTTOM HAZARDS ================= -->
   <div class="alert-dock">
-    <button class="alert-btn btn-cops" onclick="broadcastAlert('Traffic Police Checking')">👮 Cops Check</button>
-    <button class="alert-btn btn-road" onclick="broadcastAlert('Bad / Slippery Road')">⚠️ Bad Road</button>
-    <button class="alert-btn btn-animal" onclick="broadcastAlert('Animals on Road')">🐂 Cattle / Animals</button>
-    <button class="alert-btn btn-fuel" onclick="broadcastAlert('Low Fuel / Gas Station')">⛽ Low Fuel</button>
-    <button class="alert-btn btn-breakdown" onclick="broadcastAlert('Breakdown / Pulled Over')">🚨 Breakdown</button>
+    <button class="alert-btn btn-cops" onclick="sendAlert('Police Checking / Cheque-post')">👮 Cops Check</button>
+    <button class="alert-btn btn-road" onclick="sendAlert('Bad Road / Landslide Mud')">⚠️ Bad Road</button>
+    <button class="alert-btn btn-cattle" onclick="sendAlert('Cattle / Animals Crossing')">🐂 Cattle Ahead</button>
+    <button class="alert-btn btn-fuel" onclick="sendAlert('Low Fuel / Gas Station Stop')">⛽ Low Fuel</button>
+    <button class="alert-btn btn-breakdown" onclick="sendAlert('Mechanical Breakdown')">🚨 Breakdown</button>
   </div>
 
+  <!-- Leaflet Map Container -->
   <div id="map"></div>
 
-  <!-- Leaflet JavaScript -->
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
     // ==========================================
-    // 1. CONFIGURATION & STATE
+    // 1. STATE & AUTH MANAGEMENT
     // ==========================================
-    const RIDE_ROOM = "nepal-ride-expedition-01";
-    const RIDER_ID = "rider_" + Math.floor(Math.random() * 10000);
-    let RIDER_NAME = prompt("Enter your Rider Name / Call-sign:", "Rider-" + RIDER_ID.slice(-3)) || "Solo Rider";
+    let currentUser = null;
+    let pendingVerificationEmail = null;
+    let generatedOtp = null;
 
-    // Centered at Prithvi Highway corridor (Kathmandu towards Pokhara)
-    let myPosition = { lat: 27.7172, lng: 85.3240, heading: 0, speed: 0 };
-    const destination = { lat: 28.2096, lng: 83.9856, name: "Pokhara Lakeside" };
+    let activeTrip = {
+      code: "SOLO",
+      title: "Solo Scout",
+      start: { lat: 27.7172, lng: 85.3240, name: "Kathmandu" },
+      dest: { lat: 28.2096, lng: 83.9856, name: "Pokhara Lakeside" },
+      totalKm: 0
+    };
 
-    let riders = {}; // Holds up to 10 riders
+    let riders = {};
     let markers = {};
+    let routeLayer = null;
+    let myPosition = { lat: 27.7172, lng: 85.3240, speed: 0 };
     let watchId = null;
 
-    // ==========================================
-    // 2. MAP INITIALIZATION (Nepal Center)
-    // ==========================================
-    const map = L.map('map', { zoomControl: false }).setView([myPosition.lat, myPosition.lng], 13);
-
-    // High detail OpenStreetMap tile server
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
-
-    // Destination Pin
-    const destIcon = L.divIcon({
-      html: '<div style="font-size:24px;">🏁</div>',
-      className: '',
-      iconAnchor: [12, 24]
+    // Check Local Session on Load
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      checkAuthSession();
     });
-    L.marker([destination.lat, destination.lng], { icon: destIcon }).addTo(map)
-      .bindPopup(`<b>Destination</b><br>${destination.name}`);
 
-    // My Marker
-    const myIcon = L.divIcon({
-      html: '<div style="background:#00e676;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 10px #00e676;"></div>',
-      className: '',
-      iconAnchor: [8, 8]
-    });
-    markers['me'] = L.marker([myPosition.lat, myPosition.lng], { icon: myIcon }).addTo(map)
-      .bindPopup(`<b>${RIDER_NAME} (You)</b>`);
+    function checkAuthSession() {
+      const session = localStorage.getItem('motosquad_active_user');
+      if (session) {
+        currentUser = JSON.parse(session);
+        onUserAuthenticated();
+      } else {
+        document.getElementById('authModal').style.display = 'flex';
+      }
+    }
+
+    function switchAuthTab(tab) {
+      document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('formLogin').style.display = 'none';
+      document.getElementById('formSignup').style.display = 'none';
+      document.getElementById('formVerify').style.display = 'none';
+
+      if (tab === 'login') {
+        document.getElementById('tabLogin').classList.add('active');
+        document.getElementById('formLogin').style.display = 'block';
+      } else if (tab === 'signup') {
+        document.getElementById('tabSignup').classList.add('active');
+        document.getElementById('formSignup').style.display = 'block';
+      } else if (tab === 'verify') {
+        document.getElementById('tabVerify').classList.add('active');
+        document.getElementById('tabVerify').style.display = 'block';
+        document.getElementById('formVerify').style.display = 'block';
+      }
+    }
+
+    function handleSignup(e) {
+      e.preventDefault();
+      const email = document.getElementById('regEmail').value.trim().toLowerCase();
+      const name = document.getElementById('regName').value.trim();
+      const bike = document.getElementById('regBike').value.trim();
+      const password = document.getElementById('regPassword').value;
+
+      let users = JSON.parse(localStorage.getItem('motosquad_users') || "{}");
+      if (users[email]) {
+        alert("An account with this email already exists. Please log in.");
+        return switchAuthTab('login');
+      }
+
+      // Generate a 6-digit verification code
+      generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      pendingVerificationEmail = email;
+
+      // Save unverified user profile
+      users[email] = { name, bike, email, password, verified: false };
+      localStorage.setItem('motosquad_users', JSON.stringify(users));
+
+      // Display Code Notification (Simulating an Email Delivery in Nepal)
+      const notice = document.getElementById('authNotice');
+      notice.style.display = 'block';
+      notice.innerHTML = `✉️ <b>Email Sent!</b> Simulated verification code for <b>${email}</b> is: <span style="font-size:16px; font-weight:bold; color:#00e676;">${generatedOtp}</span>`;
+
+      switchAuthTab('verify');
+    }
+
+    function handleVerify(e) {
+      e.preventDefault();
+      const inputCode = document.getElementById('verifyCode').value.trim();
+
+      if (inputCode === generatedOtp) {
+        let users = JSON.parse(localStorage.getItem('motosquad_users') || "{}");
+        users[pendingVerificationEmail].verified = true;
+        localStorage.setItem('motosquad_users', JSON.stringify(users));
+
+        currentUser = users[pendingVerificationEmail];
+        localStorage.setItem('motosquad_active_user', JSON.stringify(currentUser));
+
+        alert("Account verified successfully! Welcome to the squad.");
+        onUserAuthenticated();
+      } else {
+        alert("Invalid code. Please re-enter the 6-digit code shown in the green box.");
+      }
+    }
+
+    function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+      const password = document.getElementById('loginPassword').value;
+
+      let users = JSON.parse(localStorage.getItem('motosquad_users') || "{}");
+      const user = users[email];
+
+      if (!user || user.password !== password) {
+        alert("Invalid email or password.");
+        return;
+      }
+
+      if (!user.verified) {
+        pendingVerificationEmail = email;
+        generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        const notice = document.getElementById('authNotice');
+        notice.style.display = 'block';
+        notice.innerHTML = `Please verify your account. Your code is: <b>${generatedOtp}</b>`;
+        return switchAuthTab('verify');
+      }
+
+      currentUser = user;
+      localStorage.setItem('motosquad_active_user', JSON.stringify(currentUser));
+      onUserAuthenticated();
+    }
+
+    function handleLogout() {
+      localStorage.removeItem('motosquad_active_user');
+      location.reload();
+    }
+
+    function onUserAuthenticated() {
+      document.getElementById('authModal').style.display = 'none';
+      document.getElementById('userNameBadge').innerText = `${currentUser.name} (${currentUser.bike})`;
+      speak(`Welcome back, ${currentUser.name}. MotoSquad system online.`);
+      initMQTT();
+    }
 
     // ==========================================
-    // 3. VOICE ENGINE (Audio Alerts to Helmets)
+    // 2. LEAFLET MAP & OSRM ROUTE CALCULATION
     // ==========================================
-    function speak(text) {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel(); // Cancel any ongoing speech
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        window.speechSynthesis.speak(utterance);
+    let map;
+    function initMap() {
+      map = L.map('map', { zoomControl: false }).setView([27.7172, 85.3240], 11);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Current Rider Marker
+      const myIcon = L.divIcon({
+        className: 'custom-icon',
+        html: '<div class="pulse-pin" style="background:#00e676;"></div>',
+        iconAnchor: [7, 7]
+      });
+      markers['me'] = L.marker([myPosition.lat, myPosition.lng], { icon: myIcon }).addTo(map)
+        .bindPopup("<b>You (Leader/Rider)</b>");
+    }
+
+    // Fetch actual highway geometry from OpenStreetMap OSRM
+    async function calculateHighwayRoute(startLat, startLng, destLat, destLng) {
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          activeTrip.totalKm = (route.distance / 1000).toFixed(1);
+
+          if (routeLayer) map.removeLayer(routeLayer);
+
+          routeLayer = L.geoJSON(route.geometry, {
+            style: { color: '#00e676', weight: 5, opacity: 0.8 }
+          }).addTo(map);
+
+          map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+
+          document.getElementById('displayRouteStats').innerHTML = 
+            `Start: ${activeTrip.start.name}<br/>Finish: ${activeTrip.dest.name}<br/>Total Distance: <b>${activeTrip.totalKm} km</b>`;
+        }
+      } catch (err) {
+        console.warn("Could not fetch road route, falling back to straight polyline", err);
       }
     }
 
     // ==========================================
-    // 4. REAL-TIME MULTI-RIDER NETWORKING (MQTT)
+    // 3. TRIP PLANNING ENGINE
     // ==========================================
-    // Connects to a free public broker so phones communicate instantly
-    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+    function toggleTripModal(show) {
+      document.getElementById('tripModal').style.display = show ? 'flex' : 'none';
+    }
 
-    client.on('connect', () => {
-      console.log("Connected to Realtime Ride Network");
-      // Subscribe to rider locations & alerts
-      client.subscribe(`moto/${RIDE_ROOM}/pos/+`);
-      client.subscribe(`moto/${RIDE_ROOM}/alerts`);
+    function confirmTripPlan() {
+      const title = document.getElementById('tripTitle').value;
+      const startParts = document.getElementById('startSelect').value.split(',');
+      const destParts = document.getElementById('destSelect').value.split(',');
 
-      // Announce arrival
-      broadcastPosition();
-    });
+      const startName = document.getElementById('startSelect').options[document.getElementById('startSelect').selectedIndex].text;
+      const destName = document.getElementById('destSelect').options[document.getElementById('destSelect').selectedIndex].text;
 
-    client.on('message', (topic, payload) => {
-      try {
-        const data = JSON.parse(payload.toString());
+      // Generate a random 6-character Trip Code
+      const tripCode = "MOTO-" + Math.floor(100 + Math.random() * 900);
 
-        if (topic.includes('/pos/')) {
-          handleIncomingRiderPosition(data);
-        } else if (topic.includes('/alerts')) {
-          handleIncomingAlert(data);
-        }
-      } catch (e) {
-        console.error("Payload error:", e);
+      activeTrip = {
+        code: tripCode,
+        title: title,
+        start: { lat: parseFloat(startParts[0]), lng: parseFloat(startParts[1]), name: startName },
+        dest: { lat: parseFloat(destParts[0]), lng: parseFloat(destParts[1]), name: destName }
+      };
+
+      document.getElementById('tripCodeBadge').innerText = activeTrip.code;
+      document.getElementById('displayTripTitle').innerText = activeTrip.title;
+
+      calculateHighwayRoute(activeTrip.start.lat, activeTrip.start.lng, activeTrip.dest.lat, activeTrip.dest.lng);
+      toggleTripModal(false);
+
+      // Broadcast new trip details to network
+      if (mqttClient && mqttClient.connected) {
+        mqttClient.publish(`motosquad/trips/${activeTrip.code}`, JSON.stringify(activeTrip));
       }
-    });
 
-    function broadcastPosition() {
-      if (!client.connected) return;
-      const payload = {
-        id: RIDER_ID,
-        name: RIDER_NAME,
+      speak(`Trip planned for ${title}. Trip code is ${activeTrip.code.replace('-', ' ')}`);
+    }
+
+    function joinExistingTrip() {
+      const code = document.getElementById('joinTripCodeInput').value.trim().toUpperCase();
+      if (!code) return alert("Please enter a valid trip code");
+
+      activeTrip.code = code;
+      document.getElementById('tripCodeBadge').innerText = code;
+      document.getElementById('displayTripTitle').innerText = "Joined Trip: " + code;
+
+      // Subscribe to this specific trip code
+      mqttClient.subscribe(`motosquad/trips/${code}`);
+      toggleTripModal(false);
+      speak(`Joined trip ${code.replace('-', ' ')}. Syncing squad.`);
+    }
+
+    // ==========================================
+    // 4. REALTIME SYNC & WARNING ENGINE
+    // ==========================================
+    let mqttClient;
+    function initMQTT() {
+      mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+
+      mqttClient.on('connect', () => {
+        console.log("Connected to Realtime Squad Broker");
+        mqttClient.subscribe(`motosquad/${activeTrip.code}/riders/+`);
+        mqttClient.subscribe(`motosquad/${activeTrip.code}/alerts`);
+        broadcastLocation();
+      });
+
+      mqttClient.on('message', (topic, payload) => {
+        try {
+          const data = JSON.parse(payload.toString());
+          if (topic.includes('/riders/')) {
+            updateSquadRider(data);
+          } else if (topic.includes('/alerts')) {
+            receiveRoadAlert(data);
+          } else if (topic.includes('/trips/')) {
+            // Received shared trip route
+            activeTrip = data;
+            document.getElementById('tripCodeBadge').innerText = activeTrip.code;
+            document.getElementById('displayTripTitle').innerText = activeTrip.title;
+            calculateHighwayRoute(activeTrip.start.lat, activeTrip.start.lng, activeTrip.dest.lat, activeTrip.dest.lng);
+          }
+        } catch (e) { console.error(e); }
+      });
+    }
+
+    function broadcastLocation() {
+      if (!mqttClient || !mqttClient.connected || !currentUser) return;
+      const data = {
+        id: currentUser.email,
+        name: currentUser.name,
+        bike: currentUser.bike,
         lat: myPosition.lat,
         lng: myPosition.lng,
-        speed: myPosition.speed,
-        timestamp: Date.now()
+        speed: myPosition.speed
       };
-      client.publish(`moto/${RIDE_ROOM}/pos/${RIDER_ID}`, JSON.stringify(payload));
+      mqttClient.publish(`motosquad/${activeTrip.code}/riders/${currentUser.email}`, JSON.stringify(data));
     }
 
-    // Process other squad members' positions
-    function handleIncomingRiderPosition(data) {
-      if (data.id === RIDER_ID) return; // Ignore self
+    function updateSquadRider(data) {
+      if (data.id === currentUser.email) return;
 
       riders[data.id] = data;
 
-      // Update or create marker on map
+      // Marker
       if (!markers[data.id]) {
-        const bikeIcon = L.divIcon({
-          html: '<div style="background:#2979ff;width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 0 8px #2979ff;"></div>',
-          className: '',
-          iconAnchor: [7, 7]
+        const icon = L.divIcon({
+          className: 'custom-icon',
+          html: '<div style="background:#2979ff;width:12px;height:12px;border-radius:50%;border:2px solid #fff;"></div>',
+          iconAnchor: [6, 6]
         });
-        markers[data.id] = L.marker([data.lat, data.lng], { icon: bikeIcon }).addTo(map);
+        markers[data.id] = L.marker([data.lat, data.lng], { icon: icon }).addTo(map);
       } else {
         markers[data.id].setLatLng([data.lat, data.lng]);
       }
 
-      const distM = calculateDistance(myPosition.lat, myPosition.lng, data.lat, data.lng);
-      const distStr = distM > 1000 ? (distM / 1000).toFixed(1) + " km" : Math.round(distM) + " m";
+      const dist = Math.round(calculateDistance(myPosition.lat, myPosition.lng, data.lat, data.lng));
+      markers[data.id].bindPopup(`<b>${data.name}</b><br>${data.bike}<br>${dist}m away`);
 
-      markers[data.id].bindPopup(`<b>${data.name}</b><br>Speed: ${data.speed} km/h<br>Distance: ${distStr}`);
-
-      updateRosterUI();
+      renderRoster();
     }
 
-    // ==========================================
-    // 5. DISTANCE & SEPARATION WARNINGS
-    // ==========================================
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371e3; // Earth radius in meters
-      const p1 = lat1 * Math.PI / 180;
-      const p2 = lat2 * Math.PI / 180;
-      const dp = (lat2 - lat1) * Math.PI / 180;
-      const dl = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dp/2) * Math.sin(dp/2) +
-                Math.cos(p1) * Math.cos(p2) *
-                Math.sin(dl/2) * Math.sin(dl/2);
-      return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-    }
-
-    function updateRosterUI() {
-      const riderKeys = Object.keys(riders);
-      document.getElementById('riderCount').innerText = `${riderKeys.length + 1} Riders Online`;
+    function renderRoster() {
+      const keys = Object.keys(riders);
+      document.getElementById('squadCount').innerText = keys.length + 1;
 
       let html = "";
-      riderKeys.forEach(id => {
-        const r = riders[id];
-        const distM = calculateDistance(myPosition.lat, myPosition.lng, r.lat, r.lng);
-        const distStr = distM > 1000 ? (distM/1000).toFixed(1) + " km" : Math.round(distM) + " m";
-
-        html += `<div>• <b>${r.name}</b>: ${distStr} (${r.speed} km/h)</div>`;
-
-        // Trigger voice alert if a friend drops far behind
-        if (distM > 800 && !r.alertedSeparation) {
-          speak(`Heads up! ${r.name} has fallen 800 meters behind.`);
-          r.alertedSeparation = true;
-        }
+      keys.forEach(k => {
+        const r = riders[k];
+        const dist = Math.round(calculateDistance(myPosition.lat, myPosition.lng, r.lat, r.lng));
+        const distLabel = dist > 1000 ? (dist / 1000).toFixed(1) + " km" : dist + " m";
+        html += `<div>• <b>${r.name}</b> (${r.bike})<br/>&nbsp;&nbsp;Dist: ${distLabel} | ${r.speed} km/h</div>`;
       });
-
-      document.getElementById('rosterList').innerHTML = html || "No riders within range";
+      document.getElementById('rosterList').innerHTML = html || "No squad members nearby.";
     }
 
-    // ==========================================
-    // 6. HAZARD WARNING DISPATCHER
-    // ==========================================
-    function broadcastAlert(type) {
-      const alertPayload = {
+    function sendAlert(type) {
+      const alertMsg = {
         type: type,
-        reporter: RIDER_NAME,
+        by: currentUser.name,
         lat: myPosition.lat,
         lng: myPosition.lng,
-        timestamp: Date.now()
+        time: Date.now()
       };
-      client.publish(`moto/${RIDE_ROOM}/alerts`, JSON.stringify(alertPayload));
+      mqttClient.publish(`motosquad/${activeTrip.code}/alerts`, JSON.stringify(alertMsg));
       speak(`${type} alert transmitted to squad.`);
     }
 
-    function handleIncomingAlert(alert) {
-      // Create hazard pin on map
-      const hazardIcon = L.divIcon({
+    function receiveRoadAlert(alertData) {
+      const hazardPin = L.divIcon({
         html: '<div style="font-size:22px;">⚠️</div>',
         className: '',
         iconAnchor: [11, 22]
       });
-      L.marker([alert.lat, alert.lng], { icon: hazardIcon })
-        .addTo(map)
-        .bindPopup(`<b>${alert.type}</b><br>Reported by ${alert.reporter}`)
+      L.marker([alertData.lat, alertData.lng], { icon: hazardPin }).addTo(map)
+        .bindPopup(`<b>${alertData.type}</b><br>Reported by: ${alertData.by}`)
         .openPopup();
 
-      const dist = Math.round(calculateDistance(myPosition.lat, myPosition.lng, alert.lat, alert.lng));
-      // Voice alert into earphones
-      speak(`Warning! ${alert.type} reported ${dist} meters ahead by ${alert.reporter}`);
+      const dist = Math.round(calculateDistance(myPosition.lat, myPosition.lng, alertData.lat, alertData.lng));
+      speak(`Warning! ${alertData.type} reported ${dist} meters ahead.`);
     }
 
-    // ==========================================
-    // 7. REAL GPS & DESK SIMULATOR
-    // ==========================================
+    // Haversine Formula (Meters)
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const p1 = lat1 * Math.PI / 180;
+      const p2 = lat2 * Math.PI / 180;
+      const dp = (lat2 - lat1) * Math.PI / 180;
+      const dl = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
+      return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+    }
+
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1.0;
+        window.speechSynthesis.speak(u);
+      }
+    }
+
+    // Toggle Real GPS
     function toggleGPS() {
       if (watchId) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
-        alert("GPS disabled. Back to manual.");
+        alert("GPS disabled.");
       } else {
-        if (!navigator.geolocation) return alert("Geolocation not supported");
-        watchId = navigator.geolocation.watchPosition((pos) => {
-          myPosition.lat = pos.coords.latitude;
-          myPosition.lng = pos.coords.longitude;
-          myPosition.speed = Math.round((pos.coords.speed || 0) * 3.6);
-          document.getElementById('mySpeed').innerText = `${myPosition.speed} km/h`;
-
+        watchId = navigator.geolocation.watchPosition((p) => {
+          myPosition.lat = p.coords.latitude;
+          myPosition.lng = p.coords.longitude;
+          myPosition.speed = Math.round((p.coords.speed || 0) * 3.6);
           markers['me'].setLatLng([myPosition.lat, myPosition.lng]);
-          map.panTo([myPosition.lat, myPosition.lng]);
-          broadcastPosition();
-        }, (err) => console.error(err), { enableHighAccuracy: true });
-        alert("Real GPS Tracking Activated!");
+          broadcastLocation();
+        }, (e) => alert(e.message), { enableHighAccuracy: true });
+        alert("Real GPS Tracking Connected!");
       }
     }
 
-    // Simulate 3 moving riders along the Prithvi Highway towards Mugling
-    function simulateGroupRiders() {
+    // Desk Simulation
+    function simulateRiders() {
       const mockFriends = [
-        { id: "sim_1", name: "Aayush (Lead)", lat: myPosition.lat + 0.005, lng: myPosition.lng + 0.005, speed: 58 },
-        { id: "sim_2", name: "Bikash (Mid)",  lat: myPosition.lat - 0.003, lng: myPosition.lng - 0.002, speed: 52 },
-        { id: "sim_3", name: "Suman (Tail)", lat: myPosition.lat - 0.008, lng: myPosition.lng - 0.006, speed: 44 }
+        { id: "friend_1", name: "Rohan", bike: "Duke 390", lat: myPosition.lat + 0.005, lng: myPosition.lng + 0.004, speed: 60 },
+        { id: "friend_2", name: "Suman", bike: "Scrambler 400", lat: myPosition.lat - 0.003, lng: myPosition.lng - 0.003, speed: 55 },
+        { id: "friend_3", name: "Aayush", bike: "Himalayan", lat: myPosition.lat - 0.007, lng: myPosition.lng - 0.006, speed: 48 }
       ];
-
-      mockFriends.forEach(f => handleIncomingRiderPosition(f));
-
-      // Animate them moving along the road
-      setInterval(() => {
-        mockFriends.forEach(f => {
-          f.lat += (Math.random() - 0.49) * 0.0005;
-          f.lng += (Math.random() - 0.49) * 0.0005;
-          f.speed = Math.floor(45 + Math.random() * 20);
-          handleIncomingRiderPosition(f);
-        });
-      }, 2500);
-
-      speak("Simulation active. Three squad riders connected on radar.");
+      mockFriends.forEach(f => updateSquadRider(f));
+      speak("Simulated 3 squad riders into current trip.");
     }
 
-    // Periodic coordinate sync (every 3 seconds)
-    setInterval(broadcastPosition, 3000);
+    // Auto broadcast every 3s
+    setInterval(broadcastLocation, 3000);
   </script>
 </body>
 </html>
